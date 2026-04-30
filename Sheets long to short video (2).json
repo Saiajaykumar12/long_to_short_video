@@ -1,0 +1,653 @@
+{
+  "name": "Sheets long to short video",
+  "nodes": [
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "documentId": {
+          "__rl": true,
+          "value": "1WqS4g9YaJEVk7cLygvMBaQCAIrguuXU4mOF0XrlEEEE",
+          "mode": "list",
+          "cachedResultName": "Long Video to Short Video",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1WqS4g9YaJEVk7cLygvMBaQCAIrguuXU4mOF0XrlEEEE/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1WqS4g9YaJEVk7cLygvMBaQCAIrguuXU4mOF0XrlEEEE/edit#gid=0"
+        },
+        "event": "rowAdded",
+        "options": {}
+      },
+      "id": "cd109e5e-b0cd-4d4d-a7c8-23beae405729",
+      "name": "Google Sheets Trigger",
+      "type": "n8n-nodes-base.googleSheetsTrigger",
+      "typeVersion": 1,
+      "position": [
+        2880,
+        832
+      ],
+      "credentials": {
+        "googleSheetsTriggerOAuth2Api": {
+          "id": "zQxUdQTmvHmPDF5W",
+          "name": "Google Sheets Trigger account"
+        }
+      },
+      "notes": "👉 Replace YOUR_GOOGLE_SHEET_ID with your actual Sheet ID"
+    },
+    {
+      "parameters": {
+        "jsCode": "const row = $input.first().json;\nconst videoUrl = row.video_url || row['video_url'];\n\nif (!videoUrl) throw new Error('No video_url found in sheet row: ' + JSON.stringify(row));\n\nconst rowNumber = row.row_number || row['row_number'] || 2;\n\nreturn [{ json: { \n  video_url: videoUrl,\n  shotstack_video_url: videoUrl,\n  audio_url: videoUrl,\n  row_number: rowNumber\n} }];"
+      },
+      "id": "f7d90f81-14ed-4f64-b2e4-285f06607a75",
+      "name": "Read Sheet Row",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3120,
+        832
+      ],
+      "notes": "Reads video_url (Google Drive direct download link) from the sheet"
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\n\nreturn [{ json: { \n  video_url: data.video_url,\n  audio_url: data.audio_url,\n  shotstack_video_url: data.shotstack_video_url,\n  row_number: data.row_number\n} }];"
+      },
+      "id": "620f168c-0184-481d-9f09-230f68c312ad",
+      "name": "Prepare URLs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3360,
+        832
+      ],
+      "notes": "Passes Drive URL as both audio source and video source"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.assemblyai.com/v2/transcript",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"audio_url\": \"{{ $json.audio_url }}\",\n  \"language_code\": \"en\",\n  \"punctuate\": true,\n  \"format_text\": true,\n  \"speech_models\" : [\"universal-3-pro\"]\n}",
+        "options": {}
+      },
+      "id": "d28fc5e3-6bdd-45b7-9ed8-216657f3320f",
+      "name": "Submit Audio for Transcription (AssemblyAI)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3584,
+        832
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "I1VGPYVZ9nhyAG3S",
+          "name": "Header Auth account"
+        }
+      },
+      "notes": "AssemblyAI credential: Name=Authorization, Value=Bearer YOUR_ASSEMBLYAI_KEY"
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\nif (!data.id) throw new Error('AssemblyAI did not return a transcript ID: ' + JSON.stringify(data));\n\nreturn [{ json: {\n  transcript_id: data.id,\n  status: data.status,\n  video_url: $('Prepare URLs').item.json.shotstack_video_url,\n  row_number: $('Prepare URLs').item.json.row_number\n} }];"
+      },
+      "id": "bf1c0975-49ab-489c-9cdd-966b239609be",
+      "name": "Save Transcript ID",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3808,
+        832
+      ]
+    },
+    {
+      "parameters": {
+        "amount": 180,
+        "unit": "seconds"
+      },
+      "id": "c89878cc-752a-4b99-a79d-dcb111440f05",
+      "name": "Wait 180s (Transcription Processing)",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1,
+      "position": [
+        4032,
+        832
+      ],
+      "webhookId": "9dbbd075-74b1-49d1-97b1-fef174b13e30",
+      "notes": "Increase to 300s for videos longer than 10 minutes"
+    },
+    {
+      "parameters": {
+        "url": "=https://api.assemblyai.com/v2/transcript/{{ $('Save Transcript ID').item.json.transcript_id }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {}
+      },
+      "id": "8314db9c-b4cc-4ee5-a76b-d311c04f8f9b",
+      "name": "Poll Transcription Status",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        4256,
+        832
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "I1VGPYVZ9nhyAG3S",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\n\nif (data.status === 'error') throw new Error('AssemblyAI transcription failed: ' + data.error);\nif (data.status !== 'completed') throw new Error('Transcription not ready yet (status: ' + data.status + '). Increase Wait node.');\n\nconst transcript = data.text || '';\nlet sentences = [];\n\nif (data.sentences && data.sentences.length > 0) {\n  sentences = data.sentences.map(s => ({\n    text: s.text,\n    start_ms: s.start,\n    end_ms: s.end,\n    start_sec: parseFloat((s.start / 1000).toFixed(2)),\n    end_sec: parseFloat((s.end / 1000).toFixed(2))\n  }));\n}\n\nreturn [{ json: { \n  transcript, \n  sentences,\n  word_count: transcript.split(' ').length,\n  video_url: $('Save Transcript ID').first().json.video_url,\n  row_number: $('Save Transcript ID').first().json.row_number\n} }];"
+      },
+      "id": "2c86df4e-0d40-4042-bbd9-6e06412d219d",
+      "name": "Extract Transcript + Timestamps",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4480,
+        832
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.groq.com/openai/v1/chat/completions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"llama-3.3-70b-versatile\",\n  \"max_tokens\": 1000,\n  \"messages\": [\n    {\n      \"role\": \"system\",\n      \"content\": \"You are a video editor AI. Given a transcript with sentence timestamps, identify the 3-5 most important/interesting moments to clip. Return ONLY valid JSON, no explanation, no markdown, no extra text. Format exactly like this:\\n{\\\"title\\\": \\\"Short catchy title\\\",\\\"summary\\\": \\\"2 sentence summary of the whole video\\\",\\\"clips\\\": [{\\\"clip_number\\\": 1,\\\"reason\\\": \\\"why this is key\\\",\\\"start_sec\\\": 10.5,\\\"end_sec\\\": 25.0,\\\"quote\\\": \\\"exact words spoken\\\"}]}\"\n    },\n    {\n      \"role\": \"user\",\n      \"content\": \"Transcript with timestamps:\\n{{ JSON.stringify($json.sentences.slice(0, 80)) }}\\n\\nFull transcript:\\n{{ $json.transcript.substring(0, 4000) }}\"\n    }\n  ]\n}",
+        "options": {}
+      },
+      "id": "9fed5fe0-0a89-4839-b8fd-bf13b015c3f0",
+      "name": "Identify Key Moments (Groq LLM)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        4704,
+        832
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "5PlSOfrar99hSznt",
+          "name": "Header Auth account 2"
+        }
+      },
+      "notes": "Groq credential: Name=Authorization, Value=Bearer YOUR_GROQ_KEY"
+    },
+    {
+      "parameters": {
+        "jsCode": "const response = $input.first().json;\nconst content = response.choices?.[0]?.message?.content || '';\n\nlet parsed;\ntry {\n  const clean = content.replace(/```json|```/g, '').trim();\n  parsed = JSON.parse(clean);\n} catch(e) {\n  throw new Error('Failed to parse LLM JSON response: ' + content);\n}\n\nif (!parsed.clips || parsed.clips.length === 0) throw new Error('No clips identified by LLM');\n\nconst validClips = parsed.clips.map((clip, i) => {\n  let start = parseFloat(clip.start_sec) || 0;\n  let end = parseFloat(clip.end_sec) || start + 10;\n  if (end <= start) end = start + 10;\n  if (end - start < 3) end = start + 3;\n  return {\n    clip_number: i + 1,\n    reason: clip.reason || '',\n    start_sec: start,\n    end_sec: end,\n    duration: parseFloat((end - start).toFixed(1)),\n    quote: clip.quote || ''\n  };\n});\n\nreturn [{ json: {\n  title: parsed.title || 'Key Moments',\n  summary: parsed.summary || '',\n  clips: validClips,\n  total_clips: validClips.length,\n  video_url: $('Extract Transcript + Timestamps').item.json.video_url,\n  row_number: $('Extract Transcript + Timestamps').item.json.row_number\n} }];"
+      },
+      "id": "c5ad557b-c546-41ae-a2dc-8fb3db940fd3",
+      "name": "Parse Key Moments",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4928,
+        832
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\nconst clips = data.clips;\nconst videoUrl = data.video_url;\n\nlet currentStart = 0;\nconst shotstackClips = clips.map((clip) => {\n  const length = parseFloat((clip.end_sec - clip.start_sec).toFixed(1));\n  const shotstackClip = {\n    asset: { type: 'video', src: videoUrl, trim: clip.start_sec },\n    start: currentStart,\n    length: length\n  };\n  currentStart += length;\n  return shotstackClip;\n});\n\nreturn [{ json: {\n  title: data.title,\n  summary: data.summary,\n  video_url: videoUrl,\n  shotstackClips: shotstackClips,\n  total_duration: currentStart.toFixed(1),\n  row_number: data.row_number\n} }];"
+      },
+      "id": "65c58a32-3c1f-4634-84d8-e6a1805d777c",
+      "name": "Prepare Shotstack Timeline",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5152,
+        832
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.shotstack.io/v1/render",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"timeline\": {\n    \"tracks\": [\n      {\n        \"clips\": {{ JSON.stringify($json.shotstackClips) }}\n      }\n    ]\n  },\n  \"output\": {\n    \"format\": \"mp4\",\n    \"resolution\": \"hd\"\n  }\n}",
+        "options": {}
+      },
+      "id": "7baf9429-0741-41d8-9794-47845c57ea16",
+      "name": "Submit to Shotstack",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        5376,
+        832
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "lXRSUD4pvWEH6rlS",
+          "name": "Header Auth account 3"
+        }
+      },
+      "notes": "Shotstack credential: Name=x-api-key, Value=YOUR_SHOTSTACK_KEY"
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\nif (!data.response?.id) throw new Error('No render ID returned from Shotstack: ' + JSON.stringify(data));\n\nreturn [{ json: {\n  render_id: data.response.id,\n  title: $('Prepare Shotstack Timeline').item.json.title,\n  summary: $('Prepare Shotstack Timeline').item.json.summary,\n  row_number: $('Prepare Shotstack Timeline').item.json.row_number\n} }];"
+      },
+      "id": "9d341959-fb15-431d-af4d-e7fdf8662265",
+      "name": "Save Render ID",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5600,
+        832
+      ]
+    },
+    {
+      "parameters": {
+        "amount": 5,
+        "unit": "minutes"
+      },
+      "id": "7a4168d9-a2ba-4748-96a2-7ca52206fbfb",
+      "name": "Wait 5 Minutes (Rendering)",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1,
+      "position": [
+        5824,
+        832
+      ],
+      "webhookId": "aabbcc11-22dd-33ee-44ff-556677889900",
+      "notes": "Increase to 8 minutes for longer videos"
+    },
+    {
+      "parameters": {
+        "url": "=https://api.shotstack.io/v1/render/{{ $json.render_id }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {}
+      },
+      "id": "9b00f094-18b5-4a51-94d5-8b81c5619b95",
+      "name": "Poll Shotstack Status",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        6048,
+        832
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "lXRSUD4pvWEH6rlS",
+          "name": "Header Auth account 3"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\nconst status = data.response?.status;\n\nif (!data.response) throw new Error('Response is missing.');\nif (status === 'failed') throw new Error('Shotstack rendering failed: ' + JSON.stringify(data.response));\nif (status !== 'done') throw new Error('Video not ready yet (status: ' + status + '). Increase Wait node.');\n\nreturn [{ json: {\n  success: true,\n  title: $('Save Render ID').first().json.title,\n  summary: $('Save Render ID').first().json.summary,\n  shotstack_url: data.response.url,\n  row_number: $('Save Render ID').first().json.row_number,\n  duration: data.response.data?.output?.duration || 'N/A'\n} }];"
+      },
+      "id": "f097815d-c8cb-4a12-9da0-426712591f18",
+      "name": "Final Output - Video Ready",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        6272,
+        832
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.cloudinary.com/v1_1/dxywmzkxm/video/upload",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"file\": \"{{ $json.shotstack_url }}\",\n  \"upload_preset\": \"n8n_videos\",\n  \"resource_type\": \"video\",\n  \"folder\": \"youtube_highlights\"\n}",
+        "options": {}
+      },
+      "id": "19e8c44d-86d0-4e2f-8f1a-cc337cc2cd58",
+      "name": "Upload Video to Cloudinary",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        6496,
+        832
+      ],
+      "notes": "👉 Replace YOUR_CLOUD_NAME and YOUR_UPLOAD_PRESET with your Cloudinary details"
+    },
+    {
+      "parameters": {
+        "jsCode": "const cloudData = $input.first().json;\nconst finalOutput = $('Final Output - Video Ready').first().json;\n\nreturn [{ json: {\n  row_number: finalOutput.row_number,\n  shotstack_url: finalOutput.shotstack_url,\n  cloudinary_url: cloudData.secure_url || cloudData.url || 'Upload failed',\n  title: finalOutput.title,\n  summary: finalOutput.summary,\n  status: 'completed'\n} }];"
+      },
+      "id": "7d0801ab-e31b-40e5-9b63-c7379a87c3c8",
+      "name": "Prepare Sheet Update Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        6720,
+        832
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "1WqS4g9YaJEVk7cLygvMBaQCAIrguuXU4mOF0XrlEEEE",
+          "mode": "list",
+          "cachedResultName": "Long Video to Short Video",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1WqS4g9YaJEVk7cLygvMBaQCAIrguuXU4mOF0XrlEEEE/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1WqS4g9YaJEVk7cLygvMBaQCAIrguuXU4mOF0XrlEEEE/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "row_number": "={{ $json.row_number }}",
+            "shotstack_url": "={{ $json.shotstack_url }}",
+            "cloudinary_url": "={{ $json.cloudinary_url }}",
+            "status": "={{ $json.status }}"
+          },
+          "matchingColumns": [
+            "row_number"
+          ],
+          "schema": [
+            {
+              "id": "video_url",
+              "displayName": "video_url",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "row_number",
+              "displayName": "row_number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "shotstack_url",
+              "displayName": "shotstack_url",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "cloudinary_url",
+              "displayName": "cloudinary_url",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "02d9c2ae-e4d3-4b21-ae20-695d547ec1ac",
+      "name": "Write Results to Google Sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.4,
+      "position": [
+        6944,
+        832
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "DOR5CIvFccYiAQh4",
+          "name": "Google Sheets account 2"
+        }
+      },
+      "notes": "👉 Connect your Google Sheets OAuth2 credential"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Google Sheets Trigger": {
+      "main": [
+        [
+          {
+            "node": "Read Sheet Row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Sheet Row": {
+      "main": [
+        [
+          {
+            "node": "Prepare URLs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare URLs": {
+      "main": [
+        [
+          {
+            "node": "Submit Audio for Transcription (AssemblyAI)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Submit Audio for Transcription (AssemblyAI)": {
+      "main": [
+        [
+          {
+            "node": "Save Transcript ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Transcript ID": {
+      "main": [
+        [
+          {
+            "node": "Wait 180s (Transcription Processing)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait 180s (Transcription Processing)": {
+      "main": [
+        [
+          {
+            "node": "Poll Transcription Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Poll Transcription Status": {
+      "main": [
+        [
+          {
+            "node": "Extract Transcript + Timestamps",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Transcript + Timestamps": {
+      "main": [
+        [
+          {
+            "node": "Identify Key Moments (Groq LLM)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Identify Key Moments (Groq LLM)": {
+      "main": [
+        [
+          {
+            "node": "Parse Key Moments",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Key Moments": {
+      "main": [
+        [
+          {
+            "node": "Prepare Shotstack Timeline",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Shotstack Timeline": {
+      "main": [
+        [
+          {
+            "node": "Submit to Shotstack",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Submit to Shotstack": {
+      "main": [
+        [
+          {
+            "node": "Save Render ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Render ID": {
+      "main": [
+        [
+          {
+            "node": "Wait 5 Minutes (Rendering)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait 5 Minutes (Rendering)": {
+      "main": [
+        [
+          {
+            "node": "Poll Shotstack Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Poll Shotstack Status": {
+      "main": [
+        [
+          {
+            "node": "Final Output - Video Ready",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Final Output - Video Ready": {
+      "main": [
+        [
+          {
+            "node": "Upload Video to Cloudinary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload Video to Cloudinary": {
+      "main": [
+        [
+          {
+            "node": "Prepare Sheet Update Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Sheet Update Data": {
+      "main": [
+        [
+          {
+            "node": "Write Results to Google Sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "3a680ca7-2eef-4e59-a2ae-7447e4e48c7d",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "ef7861b87ef2c05abf5aa26006f5df1068a0083130fa8abb44c07645db353bf1"
+  },
+  "id": "QdaSTgDueYT6a4zV",
+  "tags": []
+}
