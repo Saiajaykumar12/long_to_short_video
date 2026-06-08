@@ -1,3 +1,12 @@
+## Result
+
+This pipeline fully eliminated manual video editing from the content workflow at Ecowoodies. A long-form video that previously required ~[X] hours of manual editing now produces a highlight clip automatically in under [X] minutes — transcription, clip selection, and rendering handled end-to-end by the pipeline.
+
+Input: long video URL
+Output: short highlight clip, ready to post — zero human steps in between.
+
+---
+
 # 🎬 Sheets Long to Short Video Automation (n8n)
 An automated n8n workflow that converts long videos into short highlight clips using AI — triggered directly from Google Sheets with zero manual effort.
 
