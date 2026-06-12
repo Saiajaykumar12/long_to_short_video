@@ -1,6 +1,6 @@
 ## Result
 
-This pipeline fully eliminated manual video editing from the content workflow at Ecowoodies. A long-form video that previously required ~[X] hours of manual editing now produces a highlight clip automatically in under [X] minutes — transcription, clip selection, and rendering handled end-to-end by the pipeline.
+This pipeline fully eliminated manual video editing from the content workflow at Ecowoodies. A long-form video that previously required ~2 hours of manual editing now produces a highlight clip automatically in under 5 minutes — transcription, clip selection, and rendering handled end-to-end by the pipeline.
 
 Input: long video URL
 Output: short highlight clip, ready to post — zero human steps in between.
@@ -35,7 +35,7 @@ An automated n8n workflow that converts long videos into short highlight clips u
 
 ## 📌 Key Features
 - ✅ Fully automated — no manual editing required
-- ✅ AI-powered clip selection using LLaMA 3.3 70B
+- ✅ AI-powered clip selection using llama-3.1-8b-instant
 - ✅ Sentence-level timestamp accuracy
 - ✅ Outputs result link directly back to Google Sheets
 - ✅ Works for any publicly accessible video URL
